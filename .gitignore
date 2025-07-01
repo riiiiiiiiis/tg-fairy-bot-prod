@@ -1,0 +1,19 @@
+# Virtual Environment
+.venv/
+
+# Environment variables
+.env
+
+# Google Credentials
+google_credentials.json
+
+# Python cache
+__pycache__/
+*.pyc
+
+# IDE files
+.idea/
+.vscode/
+
+# AI Documents
+ai-docs/
