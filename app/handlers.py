@@ -1,175 +1,191 @@
-# app/handlers.py (ПОЛНАЯ НОВАЯ ВЕРСИЯ)
-
 import asyncio
 import logging
 from aiogram import F, Router
+from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.filters import CommandStart
-
 from app.gsheets import GoogleSheetsDB
 from app.keyboards import generate_answers_keyboard
+from config import GOOGLE_CREDENTIALS_PATH, SPREADSHEET_KEY
 
-# --- Инициализация ---
+logging.basicConfig(level=logging.INFO)
+
 router = Router()
-
-# Здесь нужно указать твой ключ таблицы
-# ВАЖНО: убедись, что файл google_credentials.json лежит в корне проекта
-try:
-    google_sheets_db = GoogleSheetsDB(
-        credentials_path='google_credentials.json',
-        spreadsheet_key='1VRFG-gQmBVRVF_J1CAiQt7fU6rj8yI3BZgUKzMxU-t8' # <-- УБЕДИСЬ, ЧТО ЭТО ТВОЙ КЛЮЧ
-    )
-    # Предзагрузка данных для ускорения
-    ALL_QUESTIONS = google_sheets_db.get_all_questions()
-    ALL_ANSWERS = google_sheets_db.get_all_answers()
-    ALL_ARCHETYPES_IDS = {ans['archetype_id'] for ans in ALL_ANSWERS}
-    TOTAL_QUESTIONS = len(ALL_QUESTIONS)
-except Exception as e:
-    logging.error(f"Не удалось инициализировать Google-таблицу: {e}")
-    google_sheets_db = None
 
 class Quiz(StatesGroup):
     in_progress = State()
 
-# --- ФУНКЦИЯ ОТПРАВКИ ВОПРОСА ---
-async def send_question(chat_id: int, state: FSMContext, bot):
+try:
+    google_sheets_db = GoogleSheetsDB(
+        credentials_path=GOOGLE_CREDENTIALS_PATH,
+        spreadsheet_key=SPREADSHEET_KEY
+    )
+except Exception as e:
+    logging.critical(f"Критическая ошибка при инициализации Google-таблицы: {e}")
+    google_sheets_db = None
+
+
+async def send_question(message: Message, state: FSMContext):
+    if not google_sheets_db:
+        await message.answer("Извините, бот временно недоступен из-за проблем с подключением к данным.")
+        return
+
     user_data = await state.get_data()
     question_id = user_data.get('current_question_id', 1)
 
-    question_data = next((q for q in ALL_QUESTIONS if q['question_id'] == question_id), None)
-    answers = [ans for ans in ALL_ANSWERS if ans['question_id'] == question_id]
+    question_data = google_sheets_db.get_question(question_id)
+    answers = google_sheets_db.get_answers(question_id)
 
     if not question_data or not answers:
-        await bot.send_message(chat_id, f"⚠️ Ошибка: не найден вопрос или ответы для ID={question_id}. Проверьте таблицу.")
-        await state.clear()
+        await message.answer("Ошибка при загрузке вопроса. Пожалуйста, попробуйте перезапустить тест командой /start.")
+        logging.error(f"Не удалось загрузить данные для вопроса ID: {question_id}")
         return
 
-    full_question_text = f"**{question_data['question_text']}**\n\n_{question_data['prompt_text']}_"
-
-    await bot.send_message(
-        chat_id,
-        full_question_text,
-        reply_markup=generate_answers_keyboard(answers, []),
-        parse_mode="Markdown"
+    full_question_text = (
+        f"*{question_data.get('question_text', '')}*\n\n"
+        f"_{question_data.get('prompt_text', '')}_"
     )
 
-    await state.update_data(current_question_id=question_id, answered_in_question=[], click_count=0)
+    try:
+        await message.answer(
+            full_question_text,
+            reply_markup=generate_answers_keyboard(answers, []),
+            parse_mode="MarkdownV2"
+        )
+    except Exception:
+        await message.answer(
+            full_question_text.replace("*", "").replace("_", ""),
+            reply_markup=generate_answers_keyboard(answers, [])
+        )
+
+
+    await state.update_data(
+        current_question_id=question_id,
+        answered_in_question=[],
+        click_count=0
+    )
     await state.set_state(Quiz.in_progress)
 
 
-# --- ОБРАБОТЧИКИ ---
 @router.message(CommandStart())
-async def start_handler(message: Message, state: FSMContext, bot):
+async def start_handler(message: Message, state: FSMContext):
     if not google_sheets_db:
-        await message.answer("Бот временно не работает. Проблема с подключением к базе данных.")
+        await message.answer("Извините, бот временно недоступен из-за проблем с подключением к данным.")
         return
+        
+    logging.info(f"User {message.from_user.id} started the quiz.")
+    
+    welcome_message = google_sheets_db.get_config_value('welcome_message')
+    
+    await message.answer(f"🔮 {welcome_message}")
+    await asyncio.sleep(0.8)
 
     await state.clear()
-
-    welcome_message = google_sheets_db.get_config_value('welcome_message')
-    initial_prompt = google_sheets_db.get_config_value('initial_prompt')
-    fairy_intro = google_sheets_db.get_config_value('fairy_intro')
-    hat_intro = google_sheets_db.get_config_value('hat_intro')
-
-    await message.answer(f"{welcome_message}\n\n{initial_prompt}")
-    await asyncio.sleep(0.8)
-    await bot.send_chat_action(message.chat.id, 'typing')
-    await asyncio.sleep(0.8)
-
-    await message.answer(f"{fairy_intro}\n\n{hat_intro}")
-    await asyncio.sleep(0.8)
-    await bot.send_chat_action(message.chat.id, 'typing')
-    await asyncio.sleep(0.8)
-
-    initial_scores = {archetype: 0 for archetype in ALL_ARCHETYPES_IDS}
+    
+    all_archetypes = google_sheets_db.get_all_archetypes()
+    if not all_archetypes:
+        await message.answer("Ошибка: не удалось загрузить данные теста. Пожалуйста, сообщите администратору.")
+        logging.error("Не удалось инициализировать счет: список архетипов пуст.")
+        return
+        
+    initial_scores = {archetype['archetype_id']: 0 for archetype in all_archetypes if 'archetype_id' in archetype}
     await state.update_data(scores=initial_scores, current_question_id=1)
+    
+    await send_question(message, state)
 
-    await send_question(message.chat.id, state, bot)
 
-
-@router.callback_query(F.data.startswith('ans:'), Quiz.in_progress)
-async def callback_answer_handler(callback_query: CallbackQuery, state: FSMContext, bot):
-    await callback_query.answer() # Сразу отвечаем, чтобы убрать часики на кнопке
-
+@router.callback_query(F.data.startswith('ans:'))
+async def callback_answer_handler(callback_query: CallbackQuery, state: FSMContext):
     user_data = await state.get_data()
     click_count = user_data.get('click_count', 0)
-    answered_in_question = user_data.get('answered_in_question', [])
 
     if click_count >= 3:
-        return # Игнорируем нажатия, если уже выбрано 3
+        await callback_query.answer("Вы уже выбрали 3 варианта.", show_alert=True)
+        return
 
     answer_id = int(callback_query.data.split(':')[1])
-    if answer_id in answered_in_question:
-        return # Игнорируем повторное нажатие на ту же кнопку
+    answered_in_question = user_data.get('answered_in_question', [])
 
-    # --- Логика начисления очков ---
+    if answer_id in answered_in_question:
+        await callback_query.answer("Этот вариант уже выбран.", show_alert=False)
+        return
+
     click_count += 1
     answered_in_question.append(answer_id)
     
-    points = 3 - (click_count - 1)
     current_question_id = user_data.get('current_question_id')
+    answers = google_sheets_db.get_answers(current_question_id)
+    selected_answer = next((ans for ans in answers if ans.get('answer_id') == answer_id), None)
     
-    selected_answer = next((ans for ans in ALL_ANSWERS if ans['answer_id'] == answer_id), None)
-    if selected_answer:
-        archetype_id = selected_answer['archetype_id']
-        scores = user_data.get('scores', {})
-        scores[archetype_id] = scores.get(archetype_id, 0) + points
-        await state.update_data(scores=scores)
+    if not selected_answer:
+        await callback_query.answer("Ошибка! Вариант не найден.", show_alert=True)
+        return
+        
+    archetype_id = selected_answer.get('archetype_id')
+    points = 3 - (click_count - 1)
     
-    await state.update_data(click_count=click_count, answered_in_question=answered_in_question)
-
-    # --- Обновление клавиатуры ---
-    current_answers = [ans for ans in ALL_ANSWERS if ans['question_id'] == current_question_id]
-    await callback_query.message.edit_reply_markup(
-        reply_markup=generate_answers_keyboard(current_answers, answered_in_question)
+    scores = user_data.get('scores', {})
+    scores[archetype_id] = scores.get(archetype_id, 0) + points
+    
+    await state.update_data(
+        click_count=click_count, 
+        answered_in_question=answered_in_question,
+        scores=scores
     )
 
-    # --- Переход к следующему вопросу ---
+    await callback_query.message.edit_reply_markup(
+        reply_markup=generate_answers_keyboard(answers, answered_in_question)
+    )
+
     if click_count == 3:
-        # Убираем старую клавиатуру
-        await callback_query.message.edit_reply_markup(reply_markup=None)
+        await callback_query.answer("Принято!", show_alert=False)
+        await asyncio.sleep(1.5)
 
-        if current_question_id == TOTAL_QUESTIONS:
-            # Если это был последний вопрос, считаем результаты
-            await calculate_and_send_results(callback_query.message.chat.id, state, bot)
+        if current_question_id == 19:
+            await calculate_and_send_results(callback_query.message, state)
         else:
-            # Иначе переходим к следующему
             await state.update_data(current_question_id=current_question_id + 1)
-            await bot.send_chat_action(callback_query.message.chat.id, 'typing')
-            await asyncio.sleep(1.2)
-            await send_question(callback_query.message.chat.id, state, bot)
+            await send_question(callback_query.message, state)
+    else:
+        await callback_query.answer()
 
 
-async def calculate_and_send_results(chat_id: int, state: FSMContext, bot):
+async def calculate_and_send_results(message: Message, state: FSMContext):
     user_data = await state.get_data()
     scores = user_data.get('scores', {})
     
     if not scores:
-        await bot.send_message(chat_id, "Не удалось посчитать результаты. Попробуйте пройти тест заново /start")
+        await message.answer("Не удалось рассчитать результаты. Пожалуйста, начните заново /start.")
         return
-
+        
     sorted_archetypes = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    
+    final_message_parts = []
+    
+    if len(sorted_archetypes) > 0:
+        primary_archetype_id = sorted_archetypes[0][0]
+        primary_result = google_sheets_db.get_archetype_result(primary_archetype_id)
+        if primary_result:
+            final_message_parts.append(primary_result.get('main_description', ''))
+    
+    if len(sorted_archetypes) > 1:
+        secondary_1_id = sorted_archetypes[1][0]
+        secondary_1_result = google_sheets_db.get_archetype_result(secondary_1_id)
+        if secondary_1_result:
+            final_message_parts.append(secondary_1_result.get('secondary_description', ''))
 
-    # Получаем результаты
-    primary_archetype_id = sorted_archetypes[0][0]
-    secondary_1_id = sorted_archetypes[1][0]
-    secondary_2_id = sorted_archetypes[2][0]
+    if len(sorted_archetypes) > 2:
+        secondary_2_id = sorted_archetypes[2][0]
+        secondary_2_result = google_sheets_db.get_archetype_result(secondary_2_id)
+        if secondary_2_result:
+            final_message_parts.append(secondary_2_result.get('secondary_description', ''))
+            
+    final_cta_message = google_sheets_db.get_config_value('result_prompt')
+    if final_cta_message:
+        final_message_parts.append(final_cta_message)
+        
+    final_message = "\n\n".join(filter(None, final_message_parts))
 
-    primary_result = google_sheets_db.get_archetype_result(primary_archetype_id)
-    secondary_1_result = google_sheets_db.get_archetype_result(secondary_1_id)
-    secondary_2_result = google_sheets_db.get_archetype_result(secondary_2_id)
-    final_cta = google_sheets_db.get_config_value('final_cta_message')
-
-    # Формируем итоговое сообщение
-    final_message = (
-        f"{primary_result['main_description']}\n\n"
-        f"**Твои вторые энергии:**\n\n"
-        f"{secondary_1_result['secondary_description']}\n\n"
-        f"{secondary_2_result['secondary_description']}\n\n"
-        f"_{final_cta}_"
-    )
-
-    await bot.send_message(chat_id, final_message, parse_mode="Markdown")
+    await message.answer(final_message)
     await state.clear()
