@@ -8,9 +8,22 @@ logging.basicConfig(level=logging.INFO)
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 
 class GoogleSheetsDB:
-    def __init__(self, credentials_path, spreadsheet_key):
+    def __init__(self, credentials_path=None, credentials_json=None, spreadsheet_key=None):
         try:
-            creds = ServiceAccountCredentials.from_json_keyfile_name(credentials_path, scope)
+            if credentials_json:
+                # Use JSON string from environment variable
+                import json
+                if isinstance(credentials_json, str):
+                    creds_dict = json.loads(credentials_json)
+                else:
+                    creds_dict = credentials_json
+                creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            elif credentials_path:
+                # Fallback to file path
+                creds = ServiceAccountCredentials.from_json_keyfile_name(credentials_path, scope)
+            else:
+                raise ValueError("Either credentials_json or credentials_path must be provided")
+            
             self.client = gspread.authorize(creds)
             self.spreadsheet = self.client.open_by_key(spreadsheet_key)
             logging.info("Успешное подключение к Google-таблице.")

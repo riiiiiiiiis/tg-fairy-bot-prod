@@ -1,13 +1,14 @@
 import asyncio
 import logging
+import random
 from aiogram import F, Router
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from app.gsheets import GoogleSheetsDB
 from app.keyboards import generate_answers_keyboard
-from config import GOOGLE_CREDENTIALS_PATH, SPREADSHEET_KEY
+from config import GOOGLE_CREDENTIALS_PATH, GOOGLE_CREDENTIALS_JSON, SPREADSHEET_KEY
 
 logging.basicConfig(level=logging.INFO)
 
@@ -19,9 +20,11 @@ class Introduction(StatesGroup):
 
 class Quiz(StatesGroup):
     in_progress = State()
+    awaiting_result_confirmation = State()
 
 try:
     google_sheets_db = GoogleSheetsDB(
+        credentials_json=GOOGLE_CREDENTIALS_JSON,
         credentials_path=GOOGLE_CREDENTIALS_PATH,
         spreadsheet_key=SPREADSHEET_KEY
     )
@@ -46,10 +49,23 @@ async def send_question(message: Message, state: FSMContext):
         logging.error(f"Не удалось загрузить данные для вопроса ID: {question_id}")
         return
 
+    # --- ИЗМЕНЕНИЕ: Формируем нумерованный список ответов ---
+    answers_text_list = []
+    for i, answer in enumerate(answers):
+        num = i + 1
+        text = answer.get('answer_text', '')
+        answers_text_list.append(f"<b>{num}.</b> {text}")
+    
+    answers_formatted_text = "\n\n".join(answers_text_list)
+
     full_question_text = (
         f"<b>{question_data.get('question_text', '')}</b>\n\n"
+        f"{answers_formatted_text}\n\n"
         f"<i>{question_data.get('prompt_text', '')}</i>"
     )
+    
+    # Сохраняем текущий (неперемешанный) список ответов
+    await state.update_data(current_answers_order=answers)
 
     await message.answer(
         full_question_text,
@@ -67,6 +83,7 @@ async def send_question(message: Message, state: FSMContext):
 
 @router.message(CommandStart())
 async def start_handler(message: Message, state: FSMContext):
+    # ... (код этой функции остается без изменений)
     if not google_sheets_db:
         await message.answer("Извините, бот временно недоступен.")
         return
@@ -96,6 +113,7 @@ async def start_handler(message: Message, state: FSMContext):
 
 @router.callback_query(Introduction.awaiting_promo_confirmation, F.data == "start_instructions")
 async def instructions_handler(callback_query: CallbackQuery, state: FSMContext):
+    # ... (код этой функции остается без изменений)
     await callback_query.message.edit_reply_markup(reply_markup=None) 
     
     instruction_text = google_sheets_db.get_config_value('instruction_sequence').replace('\\n', '\n')
@@ -116,6 +134,7 @@ async def instructions_handler(callback_query: CallbackQuery, state: FSMContext)
 
 @router.callback_query(Introduction.awaiting_quiz_start, F.data == "start_quiz_now")
 async def quiz_start_handler(callback_query: CallbackQuery, state: FSMContext):
+    # ... (код этой функции остается без изменений)
     await callback_query.message.edit_reply_markup(reply_markup=None)
     
     all_archetypes = google_sheets_db.get_all_archetypes()
@@ -131,33 +150,35 @@ async def quiz_start_handler(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.answer()
 
 
-@router.callback_query(Quiz.in_progress, F.data.startswith('ans:'))
+@router.callback_query(Quiz.in_progress, F.data.startswith('ans_num:'))
 async def callback_answer_handler(callback_query: CallbackQuery, state: FSMContext):
     user_data = await state.get_data()
     click_count = user_data.get('click_count', 0)
 
     if click_count >= 3:
-        await callback_query.answer("Вы уже выбрали 3 варианта. Переходим к следующему вопросу...", show_alert=True)
+        await callback_query.answer("Вы уже выбрали 3 варианта.", show_alert=True)
         return
 
-    answer_id = int(callback_query.data.split(':')[1])
-    answered_in_question = user_data.get('answered_in_question', [])
+    # --- ИЗМЕНЕНИЕ: Получаем номер ответа и находим его ID ---
+    answer_num = int(callback_query.data.split(':')[1])
+    answers = user_data.get('current_answers_order', [])
+    
+    # Номер - это индекс + 1
+    if not (0 < answer_num <= len(answers)):
+        await callback_query.answer("Ошибка! Неверный номер ответа.", show_alert=True)
+        return
 
+    selected_answer = answers[answer_num - 1]
+    answer_id = selected_answer.get('answer_id')
+    
+    answered_in_question = user_data.get('answered_in_question', [])
     if answer_id in answered_in_question:
         await callback_query.answer("Этот вариант уже выбран.", show_alert=False)
         return
 
     click_count += 1
-    answered_in_question.append(answer_id) # Важно: мы добавляем ID в конец списка, сохраняя порядок
+    answered_in_question.append(answer_id)
     
-    current_question_id = user_data.get('current_question_id')
-    answers = google_sheets_db.get_answers(current_question_id)
-    selected_answer = next((ans for ans in answers if ans.get('answer_id') == answer_id), None)
-    
-    if not selected_answer:
-        await callback_query.answer("Ошибка! Вариант не найден.", show_alert=True)
-        return
-        
     archetype_id = selected_answer.get('archetype_id')
     points = 3 - (click_count - 1)
     
@@ -178,20 +199,41 @@ async def callback_answer_handler(callback_query: CallbackQuery, state: FSMConte
         await callback_query.answer("Принято! Все 3 варианта выбраны.", show_alert=False)
         await asyncio.sleep(1.5)
 
+        current_question_id = user_data.get('current_question_id')
         if current_question_id == 19:
-            await calculate_and_send_results(callback_query.message, state)
+            await ask_to_show_results(callback_query.message, state)
         else:
+            # Удаляем старое сообщение с вопросом перед отправкой нового
+            await callback_query.message.delete()
             await state.update_data(current_question_id=current_question_id + 1)
             await send_question(callback_query.message, state)
     else:
         await callback_query.answer()
 
-async def calculate_and_send_results(message: Message, state: FSMContext):
+
+async def ask_to_show_results(message: Message, state: FSMContext):
+    # ... (код этой функции остается без изменений)
+    final_text = google_sheets_db.get_config_value('final_cta_text').replace('\\n', '\n')
+    button_text = google_sheets_db.get_config_value('final_cta_button')
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=button_text, callback_data="show_final_result")]
+    ])
+    
+    await message.answer(final_text, reply_markup=keyboard)
+    await state.set_state(Quiz.awaiting_result_confirmation)
+
+
+@router.callback_query(Quiz.awaiting_result_confirmation, F.data == "show_final_result")
+async def show_results_handler(callback_query: CallbackQuery, state: FSMContext):
+    # ... (код этой функции остается без изменений)
+    await callback_query.message.edit_reply_markup(reply_markup=None)
+
     user_data = await state.get_data()
     scores = user_data.get('scores', {})
     
     if not scores:
-        await message.answer("Не удалось рассчитать результаты. /start.")
+        await callback_query.message.answer("Не удалось рассчитать результаты. /start.")
         return
         
     sorted_archetypes = sorted(scores.items(), key=lambda item: item[1], reverse=True)
@@ -219,11 +261,19 @@ async def calculate_and_send_results(message: Message, state: FSMContext):
             text = secondary_2_result.get('secondary_description', '').replace('\\n', '\n')
             final_message_parts.append(text)
             
-    final_cta_message = google_sheets_db.get_config_value('result_prompt').replace('\\n', '\n')
-    if final_cta_message:
-        final_message_parts.append(final_cta_message)
-        
     final_message = "\n\n".join(filter(None, final_message_parts))
 
-    await message.answer(final_message, parse_mode="HTML")
+    await callback_query.message.answer(final_message, parse_mode="HTML")
     await state.clear()
+    await callback_query.answer()
+
+
+@router.message(Command("help"))
+async def help_handler(message: Message):
+    # ... (код этой функции остается без изменений)
+    help_text = (
+        "<b>Доступные команды:</b>\n"
+        "<code>/start</code> — Начать тест заново\n"
+        "<code>/help</code> — Помощь по работе с ботом"
+    )
+    await message.answer(help_text, parse_mode="HTML")
