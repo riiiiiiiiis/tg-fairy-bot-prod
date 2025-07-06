@@ -13,8 +13,8 @@ A Telegram archetype quiz bot that helps users discover their personality type t
 
 ### 1. Clone and Navigate
 ```bash
-git clone <your-repo-url>
-cd tg-fairy-bot
+git clone https://github.com/riiiiiiiiis/tg-bot-fairy.git
+cd tg-bot-fairy
 ```
 
 ### 2. Create Virtual Environment
