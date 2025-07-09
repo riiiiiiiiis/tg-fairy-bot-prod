@@ -238,32 +238,35 @@ async def show_results_handler(callback_query: CallbackQuery, state: FSMContext)
         
     sorted_archetypes = sorted(scores.items(), key=lambda item: item[1], reverse=True)
     
-    final_message_parts = []
-    
+    # Отправляем основной архетип
     if len(sorted_archetypes) > 0:
         primary_archetype_id = sorted_archetypes[0][0]
         primary_result = google_sheets_db.get_archetype_result(primary_archetype_id)
         if primary_result:
             text = primary_result.get('main_description', '').replace('\\n', '\n')
-            final_message_parts.append(text)
+            if text:
+                await callback_query.message.answer(text, parse_mode="HTML")
+                await asyncio.sleep(2)  # Пауза между сообщениями
     
+    # Отправляем второй архетип
     if len(sorted_archetypes) > 1:
         secondary_1_id = sorted_archetypes[1][0]
         secondary_1_result = google_sheets_db.get_archetype_result(secondary_1_id)
         if secondary_1_result:
             text = secondary_1_result.get('secondary_description', '').replace('\\n', '\n')
-            final_message_parts.append(text)
+            if text:
+                await callback_query.message.answer(text, parse_mode="HTML")
+                await asyncio.sleep(2)  # Пауза между сообщениями
 
+    # Отправляем третий архетип
     if len(sorted_archetypes) > 2:
         secondary_2_id = sorted_archetypes[2][0]
         secondary_2_result = google_sheets_db.get_archetype_result(secondary_2_id)
         if secondary_2_result:
             text = secondary_2_result.get('secondary_description', '').replace('\\n', '\n')
-            final_message_parts.append(text)
-            
-    final_message = "\n\n".join(filter(None, final_message_parts))
-
-    await callback_query.message.answer(final_message, parse_mode="HTML")
+            if text:
+                await callback_query.message.answer(text, parse_mode="HTML")
+                await asyncio.sleep(1)  # Небольшая пауза перед завершением
     await state.clear()
     await callback_query.answer()
 
