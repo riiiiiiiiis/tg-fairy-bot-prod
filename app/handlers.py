@@ -49,9 +49,13 @@ async def send_question(message: Message, state: FSMContext):
         logging.error(f"Не удалось загрузить данные для вопроса ID: {question_id}")
         return
 
+    # Перемешиваем ответы для каждого нового вопроса
+    shuffled_answers = answers.copy()
+    random.shuffle(shuffled_answers)
+    
     # --- ИЗМЕНЕНИЕ: Формируем нумерованный список ответов ---
     answers_text_list = []
-    for i, answer in enumerate(answers):
+    for i, answer in enumerate(shuffled_answers):
         num = i + 1
         text = answer.get('answer_text', '')
         answers_text_list.append(f"<b>{num}.</b> {text}")
@@ -64,12 +68,12 @@ async def send_question(message: Message, state: FSMContext):
         f"<i>{question_data.get('prompt_text', '')}</i>"
     )
     
-    # Сохраняем текущий (неперемешанный) список ответов
-    await state.update_data(current_answers_order=answers)
+    # Сохраняем текущий перемешанный список ответов
+    await state.update_data(current_answers_order=shuffled_answers)
 
     await message.answer(
         full_question_text,
-        reply_markup=generate_answers_keyboard(answers, []),
+        reply_markup=generate_answers_keyboard(shuffled_answers, []),
         parse_mode="HTML"
     )
 
