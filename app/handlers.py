@@ -3,7 +3,7 @@ import logging
 import random
 from aiogram import F, Router
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, URLInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from app.gsheets import GoogleSheetsDB
@@ -230,7 +230,6 @@ async def ask_to_show_results(message: Message, state: FSMContext):
 
 @router.callback_query(Quiz.awaiting_result_confirmation, F.data == "show_final_result")
 async def show_results_handler(callback_query: CallbackQuery, state: FSMContext):
-    # ... (код этой функции остается без изменений)
     await callback_query.message.edit_reply_markup(reply_markup=None)
 
     user_data = await state.get_data()
@@ -270,9 +269,65 @@ async def show_results_handler(callback_query: CallbackQuery, state: FSMContext)
             text = secondary_2_result.get('secondary_description', '').replace('\\n', '\n')
             if text:
                 await callback_query.message.answer(text, parse_mode="HTML")
-                await asyncio.sleep(1)  # Небольшая пауза перед завершением
+                await asyncio.sleep(2)  # Пауза между сообщениями
+
+    # Отправляем финальное сообщение с PDF, видео и ссылкой на оплату
+    await send_final_media_and_payment(callback_query.message)
+    
     await state.clear()
     await callback_query.answer()
+
+
+async def send_final_media_and_payment(message: Message):
+    """Отправляет PDF файл, видео и ссылку на оплату в конце теста"""
+    try:
+        # Получаем данные из Google Sheets
+        pdf_url = google_sheets_db.get_config_value('final_pdf_url')
+        video_url = google_sheets_db.get_config_value('final_video_url')
+        payment_url = google_sheets_db.get_config_value('payment_url')
+        final_message_text = google_sheets_db.get_config_value('final_message_text')
+        payment_button_text = google_sheets_db.get_config_value('payment_button_text')
+
+        # Отправляем PDF файл, если указан
+        if pdf_url:
+            try:
+                await message.answer_document(
+                    document=URLInputFile(pdf_url),
+                    caption="📄 Ваш персональный отчет по результатам теста"
+                )
+                await asyncio.sleep(1)
+            except Exception as e:
+                logging.error(f"Ошибка при отправке PDF: {e}")
+
+        # Отправляем видео, если указано
+        if video_url:
+            try:
+                await message.answer_video(
+                    video=URLInputFile(video_url),
+                    caption="🎥 Дополнительная информация о вашем архетипе"
+                )
+                await asyncio.sleep(1)
+            except Exception as e:
+                logging.error(f"Ошибка при отправке видео: {e}")
+
+        # Отправляем финальное сообщение со ссылкой на оплату
+        if final_message_text:
+            keyboard = None
+            if payment_url and payment_button_text:
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text=payment_button_text, url=payment_url)]
+                ])
+            
+            await message.answer(
+                final_message_text.replace('\\n', '\n'),
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+
+    except Exception as e:
+        logging.error(f"Ошибка при отправке финальных материалов: {e}")
+        # Отправляем базовое сообщение в случае ошибки
+        await message.answer("Спасибо за прохождение теста! 🎉")
 
 
 @router.message(Command("help"))

@@ -56,6 +56,8 @@ GOOGLE_CREDENTIALS_JSON={"type":"service_account","project_id":"..."}
 3. Create service account credentials
 4. Download JSON credentials
 5. Copy the entire JSON content to `GOOGLE_CREDENTIALS_JSON` in `.env`
+6. Set up your Google Sheets with required worksheets (see `docs/worksheet-schemas.md`)
+7. Configure media files and payment links (see `docs/final-media-setup.md`)
 
 ### 6. Run the Bot
 ```bash
@@ -91,6 +93,15 @@ python main.py
 ps aux | grep python
 ```
 
+## Features
+
+- **Interactive Quiz**: 19 questions with multiple choice answers
+- **Personality Analysis**: Results show top 3 matching archetypes
+- **Media Support**: Automatic PDF and video delivery after quiz completion
+- **Payment Integration**: Built-in payment link for premium content
+- **Google Sheets Backend**: Easy content management without code changes
+- **Multilingual Support**: Configurable text through Google Sheets
+
 ## Project Structure
 
 ```
@@ -101,6 +112,12 @@ tg-fairy-bot/
 ├── Procfile            # Railway deployment config
 ├── .env                # Environment variables (local)
 ├── .gitignore          # Git ignore rules
+├── docs/               # Documentation
+│   ├── config-example.md        # Google Sheets config example
+│   ├── final-media-setup.md     # Media files setup guide
+│   ├── google-sheets-structure.md
+│   ├── service-account-setup.md
+│   └── worksheet-schemas.md
 └── app/
     ├── __init__.py     # Package initialization
     ├── handlers.py     # Bot message handlers

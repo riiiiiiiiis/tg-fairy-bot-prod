@@ -1,76 +1,59 @@
-# CLAUDE.md
+# Добавление PDF, видео и ссылки на оплату
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Что было добавлено
 
-## Project Overview
+В последнее сообщение пользователю после завершения теста теперь автоматически отправляются:
 
-This is a Telegram archetype quiz bot built with Python and aiogram. The bot conducts a 19-question quiz to determine users' personality archetypes. All content is managed externally in Google Sheets for easy editing by non-programmers.
+1. **PDF файл** - персональный отчет с результатами
+2. **Видео** - дополнительная информация об архетипе  
+3. **Сообщение со ссылкой на оплату** - для получения расширенного анализа
 
-## Architecture
+## Настройка в Google Sheets
 
-The bot follows a modular structure:
+Добавьте в лист **Config** следующие строки:
 
-- **main.py**: Entry point that initializes the bot and starts polling
-- **config.py**: Environment variable configuration using python-dotenv
-- **app/handlers.py**: Core bot logic including FSM states and callback handlers
-- **app/keyboards.py**: Inline keyboard generation for quiz answers
-- **app/gsheets.py**: Google Sheets integration with caching for quiz content
-- **Procfile**: Railway deployment configuration
+| key | value | Описание |
+|-----|-------|----------|
+| `final_pdf_url` | `https://drive.google.com/uc?id=YOUR_PDF_ID` | Ссылка на PDF файл |
+| `final_video_url` | `https://drive.google.com/uc?id=YOUR_VIDEO_ID` | Ссылка на видео |
+| `payment_url` | `https://your-payment-link.com` | Ссылка на оплату |
+| `payment_button_text` | `💳 Получить полный отчет за 990₽` | Текст кнопки оплаты |
+| `final_message_text` | `🎯 <b>Хотите узнать больше?</b>\\n\\nПолучите расширенный анализ!` | Финальное сообщение |
 
-## Key Components
+## Как получить ссылки на файлы
 
-### State Management
-Uses aiogram's FSM with these states:
-- `Introduction.awaiting_promo_confirmation`
-- `Introduction.awaiting_quiz_start`
-- `Quiz.in_progress`
-- `Quiz.awaiting_result_confirmation`
+### Google Drive:
+1. Загрузите файл в Google Drive
+2. Откройте доступ "Для всех, у кого есть ссылка"
+3. Скопируйте ID из ссылки: `https://drive.google.com/file/d/FILE_ID/view`
+4. Используйте формат: `https://drive.google.com/uc?id=FILE_ID`
 
-### Quiz Logic
-- 19 questions total, each with 6 possible answers
-- Users select 3 answers per question (ranked scoring: 3, 2, 1 points)
-- Answers are numbered 1-6 and displayed with emoji feedback
-- Final results show primary archetype + 2 secondary energies
+### Telegram:
+1. Создайте публичный канал
+2. Загрузите файлы в канал
+3. Получите прямые ссылки на файлы
 
-### Google Sheets Integration
-Data is cached (TTL 300s) and fetched from these sheets:
-- `Config`: Bot messages and button text
-- `Questions`: Question text and prompts
-- `Answers`: Answer options linked to archetypes
-- `Archetypes`: Result descriptions
+## Порядок отправки
 
-## Common Development Commands
+После показа результатов теста:
+1. PDF файл (если указан URL)
+2. Видео (если указан URL) 
+3. Финальное сообщение с кнопкой оплаты
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
+## Что делать, если что-то не работает
 
-# Run the bot locally
-python main.py
+- Проверьте, что файлы доступны по ссылкам
+- Убедитесь, что все ключи добавлены в Google Sheets
+- Перезапустите бота после изменений в таблице
+- Проверьте логи на наличие ошибок
 
-# Deploy to Railway
-# Uses Procfile: web: python main.py
-```
+## Опциональность
 
-## Environment Variables
+Если какой-то URL не указан, соответствующий элемент просто не отправляется. Бот продолжит работать нормально.
 
-Required in `.env`:
-- `BOT_TOKEN`: Telegram bot token
-- `GOOGLE_CREDENTIALS_PATH`: Path to service account JSON (default: "google_credentials.json")
-- `SPREADSHEET_KEY`: Google Sheets document ID
+## Тестирование
 
-## Testing
-
-No automated tests are currently implemented. Manual testing involves:
-1. Start conversation with `/start`
-2. Complete quiz flow (19 questions × 3 selections each)
-3. Verify archetype results are displayed correctly
-4. Test `/help` command
-
-## Important Notes
-
-- The bot uses Russian language for user interface
-- Google Sheets API has rate limits - caching is essential
-- Answer buttons use numbered display (1-6) but track by answer_id internally
-- Quiz state is cleared after completion or on new `/start`
-- Error handling includes graceful fallbacks when Google Sheets is unavailable
+1. Пройдите тест до конца
+2. Убедитесь, что все файлы отправляются
+3. Проверьте работу ссылки на оплату
+4. Посмотрите логи на наличие ошибок
