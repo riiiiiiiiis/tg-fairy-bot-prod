@@ -42,20 +42,18 @@ def get_google_sheets_db():
             logging.critical(f"GOOGLE_CREDENTIALS_PATH: {GOOGLE_CREDENTIALS_PATH}")
             raise
     return google_sheets_db
-except Exception as e:
-    logging.critical(f"Критическая ошибка при инициализации Google-таблицы: {e}")
-    google_sheets_db = None
 
 
 async def send_question(message: Message, state: FSMContext):
-    if not google_sheets_db:
+    try:
+        db = get_google_sheets_db()
+    except Exception as e:
         await message.answer("Извините, бот временно недоступен.")
         return
 
     user_data = await state.get_data()
     question_id = user_data.get('current_question_id', 1)
 
-    db = get_google_sheets_db()
     question_data = db.get_question(question_id)
     answers = db.get_answers(question_id)
 
@@ -102,15 +100,14 @@ async def send_question(message: Message, state: FSMContext):
 
 @router.message(CommandStart())
 async def start_handler(message: Message, state: FSMContext):
-    # ... (код этой функции остается без изменений)
-    if not google_sheets_db:
+    try:
+        db = get_google_sheets_db()
+    except Exception as e:
         await message.answer("Извините, бот временно недоступен.")
         return
         
     logging.info(f"User {message.from_user.id} started the conversation.")
     await state.clear()
-    
-    db = get_google_sheets_db()
     msg1_text = db.get_config_value('welcome_sequence_1').replace('\\n', '\n')
     msg2_text = db.get_config_value('welcome_sequence_2').replace('\\n', '\n')
     promo_text = db.get_config_value('promo_sequence').replace('\\n', '\n')
