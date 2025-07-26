@@ -10,9 +10,13 @@ scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/au
 class GoogleSheetsDB:
     def __init__(self, credentials_path=None, credentials_json=None, spreadsheet_key=None):
         try:
+            if not spreadsheet_key:
+                raise ValueError("SPREADSHEET_KEY не указан в переменных окружения")
+            
             if credentials_json:
                 # Use JSON string from environment variable
                 import json
+                logging.info("Используем JSON credentials из переменной окружения")
                 if isinstance(credentials_json, str):
                     creds_dict = json.loads(credentials_json)
                 else:
@@ -20,15 +24,39 @@ class GoogleSheetsDB:
                 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             elif credentials_path:
                 # Fallback to file path
+                logging.info(f"Используем credentials из файла: {credentials_path}")
                 creds = ServiceAccountCredentials.from_json_keyfile_name(credentials_path, scope)
             else:
                 raise ValueError("Either credentials_json or credentials_path must be provided")
             
+            logging.info("Авторизация в Google Sheets...")
             self.client = gspread.authorize(creds)
+            
+            logging.info(f"Открываем таблицу с ключом: {spreadsheet_key}")
             self.spreadsheet = self.client.open_by_key(spreadsheet_key)
+            
+            # Проверяем доступ к основным листам
+            required_sheets = ['Config', 'Questions', 'Answers', 'Archetypes']
+            available_sheets = [ws.title for ws in self.spreadsheet.worksheets()]
+            logging.info(f"Доступные листы: {available_sheets}")
+            
+            missing_sheets = [sheet for sheet in required_sheets if sheet not in available_sheets]
+            if missing_sheets:
+                raise ValueError(f"Отсутствуют обязательные листы: {missing_sheets}")
+            
             logging.info("Успешное подключение к Google-таблице.")
+        except json.JSONDecodeError as e:
+            logging.error(f"Ошибка парсинга JSON credentials: {e}")
+            raise
+        except gspread.exceptions.SpreadsheetNotFound:
+            logging.error(f"Таблица с ключом {spreadsheet_key} не найдена или нет доступа")
+            raise
+        except gspread.exceptions.APIError as e:
+            logging.error(f"Ошибка Google Sheets API: {e}")
+            raise
         except Exception as e:
             logging.error(f"Не удалось инициализировать Google-таблицу: {e}")
+            logging.error(f"Тип ошибки: {type(e).__name__}")
             raise
 
     @cached(cache=TTLCache(maxsize=128, ttl=300))

@@ -22,12 +22,26 @@ class Quiz(StatesGroup):
     in_progress = State()
     awaiting_result_confirmation = State()
 
-try:
-    google_sheets_db = GoogleSheetsDB(
-        credentials_json=GOOGLE_CREDENTIALS_JSON,
-        credentials_path=GOOGLE_CREDENTIALS_PATH,
-        spreadsheet_key=SPREADSHEET_KEY
-    )
+# Инициализация Google Sheets будет происходить в функциях
+google_sheets_db = None
+
+def get_google_sheets_db():
+    global google_sheets_db
+    if google_sheets_db is None:
+        try:
+            google_sheets_db = GoogleSheetsDB(
+                credentials_json=GOOGLE_CREDENTIALS_JSON,
+                credentials_path=GOOGLE_CREDENTIALS_PATH,
+                spreadsheet_key=SPREADSHEET_KEY
+            )
+            logging.info("Google Sheets успешно инициализирован")
+        except Exception as e:
+            logging.critical(f"Критическая ошибка при инициализации Google-таблицы: {e}")
+            logging.critical(f"SPREADSHEET_KEY: {SPREADSHEET_KEY}")
+            logging.critical(f"GOOGLE_CREDENTIALS_JSON присутствует: {bool(GOOGLE_CREDENTIALS_JSON)}")
+            logging.critical(f"GOOGLE_CREDENTIALS_PATH: {GOOGLE_CREDENTIALS_PATH}")
+            raise
+    return google_sheets_db
 except Exception as e:
     logging.critical(f"Критическая ошибка при инициализации Google-таблицы: {e}")
     google_sheets_db = None
@@ -41,8 +55,9 @@ async def send_question(message: Message, state: FSMContext):
     user_data = await state.get_data()
     question_id = user_data.get('current_question_id', 1)
 
-    question_data = google_sheets_db.get_question(question_id)
-    answers = google_sheets_db.get_answers(question_id)
+    db = get_google_sheets_db()
+    question_data = db.get_question(question_id)
+    answers = db.get_answers(question_id)
 
     if not question_data or not answers:
         await message.answer("Ошибка при загрузке вопроса. Пожалуйста, /start.")
@@ -95,9 +110,10 @@ async def start_handler(message: Message, state: FSMContext):
     logging.info(f"User {message.from_user.id} started the conversation.")
     await state.clear()
     
-    msg1_text = google_sheets_db.get_config_value('welcome_sequence_1').replace('\\n', '\n')
-    msg2_text = google_sheets_db.get_config_value('welcome_sequence_2').replace('\\n', '\n')
-    promo_text = google_sheets_db.get_config_value('promo_sequence').replace('\\n', '\n')
+    db = get_google_sheets_db()
+    msg1_text = db.get_config_value('welcome_sequence_1').replace('\\n', '\n')
+    msg2_text = db.get_config_value('welcome_sequence_2').replace('\\n', '\n')
+    promo_text = db.get_config_value('promo_sequence').replace('\\n', '\n')
     
     await message.answer(msg1_text)
     await asyncio.sleep(1.5)
@@ -105,7 +121,7 @@ async def start_handler(message: Message, state: FSMContext):
     await message.answer(msg2_text)
     await asyncio.sleep(1.5)
 
-    button_text = google_sheets_db.get_config_value('promo_button_text')
+    button_text = db.get_config_value('promo_button_text')
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=button_text, callback_data="start_instructions")]
     ])
@@ -120,8 +136,9 @@ async def instructions_handler(callback_query: CallbackQuery, state: FSMContext)
     # ... (код этой функции остается без изменений)
     await callback_query.message.edit_reply_markup(reply_markup=None) 
     
-    instruction_text = google_sheets_db.get_config_value('instruction_sequence').replace('\\n', '\n')
-    button_text = google_sheets_db.get_config_value('start_button_text')
+    db = get_google_sheets_db()
+    instruction_text = db.get_config_value('instruction_sequence').replace('\\n', '\n')
+    button_text = db.get_config_value('start_button_text')
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=button_text, callback_data="start_quiz_now")]
     ])
@@ -141,7 +158,8 @@ async def quiz_start_handler(callback_query: CallbackQuery, state: FSMContext):
     # ... (код этой функции остается без изменений)
     await callback_query.message.edit_reply_markup(reply_markup=None)
     
-    all_archetypes = google_sheets_db.get_all_archetypes()
+    db = get_google_sheets_db()
+    all_archetypes = db.get_all_archetypes()
     if not all_archetypes:
         await callback_query.message.answer("Ошибка: не удалось загрузить данные. /start.")
         logging.error("Список архетипов пуст.")
@@ -217,8 +235,9 @@ async def callback_answer_handler(callback_query: CallbackQuery, state: FSMConte
 
 async def ask_to_show_results(message: Message, state: FSMContext):
     # ... (код этой функции остается без изменений)
-    final_text = google_sheets_db.get_config_value('final_cta_text').replace('\\n', '\n')
-    button_text = google_sheets_db.get_config_value('final_cta_button')
+    db = get_google_sheets_db()
+    final_text = db.get_config_value('final_cta_text').replace('\\n', '\n')
+    button_text = db.get_config_value('final_cta_button')
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=button_text, callback_data="show_final_result")]
@@ -244,7 +263,8 @@ async def show_results_handler(callback_query: CallbackQuery, state: FSMContext)
     # Отправляем основной архетип
     if len(sorted_archetypes) > 0:
         primary_archetype_id = sorted_archetypes[0][0]
-        primary_result = google_sheets_db.get_archetype_result(primary_archetype_id)
+        db = get_google_sheets_db()
+        primary_result = db.get_archetype_result(primary_archetype_id)
         if primary_result:
             text = primary_result.get('main_description', '').replace('\\n', '\n')
             if text:
@@ -254,7 +274,7 @@ async def show_results_handler(callback_query: CallbackQuery, state: FSMContext)
     # Отправляем второй архетип
     if len(sorted_archetypes) > 1:
         secondary_1_id = sorted_archetypes[1][0]
-        secondary_1_result = google_sheets_db.get_archetype_result(secondary_1_id)
+        secondary_1_result = db.get_archetype_result(secondary_1_id)
         if secondary_1_result:
             text = secondary_1_result.get('secondary_description', '').replace('\\n', '\n')
             if text:
@@ -264,7 +284,7 @@ async def show_results_handler(callback_query: CallbackQuery, state: FSMContext)
     # Отправляем третий архетип
     if len(sorted_archetypes) > 2:
         secondary_2_id = sorted_archetypes[2][0]
-        secondary_2_result = google_sheets_db.get_archetype_result(secondary_2_id)
+        secondary_2_result = db.get_archetype_result(secondary_2_id)
         if secondary_2_result:
             text = secondary_2_result.get('secondary_description', '').replace('\\n', '\n')
             if text:
@@ -282,11 +302,12 @@ async def send_final_media_and_payment(message: Message):
     """Отправляет PDF файл, видео и ссылку на оплату в конце теста"""
     try:
         # Получаем данные из Google Sheets
-        pdf_url = google_sheets_db.get_config_value('final_pdf_url')
-        video_url = google_sheets_db.get_config_value('final_video_url')
-        payment_url = google_sheets_db.get_config_value('payment_url')
-        final_message_text = google_sheets_db.get_config_value('final_message_text')
-        payment_button_text = google_sheets_db.get_config_value('payment_button_text')
+        db = get_google_sheets_db()
+        pdf_url = db.get_config_value('final_pdf_url')
+        video_url = db.get_config_value('final_video_url')
+        payment_url = db.get_config_value('payment_url')
+        final_message_text = db.get_config_value('final_message_text')
+        payment_button_text = db.get_config_value('payment_button_text')
 
         # Отправляем PDF файл, если указан
         if pdf_url:
