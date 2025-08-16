@@ -1,178 +1,182 @@
 # Telegram Fairy Bot
 
-A Telegram archetype quiz bot that helps users discover their personality type through a 19-question quiz.
-
-## Prerequisites
-
-- Python 3.8+
-- macOS with Terminal
-- Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
-- Google Sheets API credentials
-
-## Local Development Setup (macOS)
-
-### 1. Clone and Navigate
-```bash
-git clone https://github.com/riiiiiiiiis/tg-bot-fairy.git
-cd tg-bot-fairy
-```
-
-### 2. Create Virtual Environment
-```bash
-# Create virtual environment
-python3 -m venv .venv
-
-# Activate virtual environment
-source .venv/bin/activate
-
-# Verify activation (you should see (.venv) in your terminal prompt)
-which python
-```
-
-### 3. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Environment Configuration
-```bash
-# Copy example environment file
-cp .env.example .env
-
-# Edit .env file with your credentials
-nano .env
-```
-
-Add your credentials to `.env`:
-```env
-BOT_TOKEN=your_telegram_bot_token_here
-SPREADSHEET_KEY=your_google_sheets_key_here
-GOOGLE_CREDENTIALS_JSON={"type":"service_account","project_id":"..."}
-```
-
-### 5. Google Sheets Setup
-1. Create a Google Cloud project
-2. Enable Google Sheets API
-3. Create service account credentials
-4. Download JSON credentials
-5. Copy the entire JSON content to `GOOGLE_CREDENTIALS_JSON` in `.env`
-6. Set up your Google Sheets with required worksheets (see `docs/worksheet-schemas.md`)
-7. Configure media files and payment links (see `docs/final-media-setup.md`)
-
-### 6. Run the Bot
-```bash
-# Make sure virtual environment is activated
-source .venv/bin/activate
-
-# Run the bot
-python main.py
-```
-
-### 7. Test the Bot
-1. Send `/start` to your bot on Telegram
-2. Complete the quiz flow
-3. Check console logs for any errors
-
-## Development Commands
-
-```bash
-# Activate virtual environment (run this every time you open a new terminal)
-source .venv/bin/activate
-
-# Install new dependencies
-pip install package_name
-pip freeze > requirements.txt
-
-# Deactivate virtual environment
-deactivate
-
-# Run with logging
-python main.py
-
-# Check bot status
-ps aux | grep python
-```
+A sophisticated Telegram personality quiz bot that helps users discover their archetype through a comprehensive 19-question interactive quiz with gender-specific content and personalized results.
 
 ## Features
 
-- **Interactive Quiz**: 19 questions with multiple choice answers
-- **Personality Analysis**: Results show top 3 matching archetypes
-- **Media Support**: Automatic PDF and video delivery after quiz completion
-- **Payment Integration**: Built-in payment link for premium content
-- **Google Sheets Backend**: Easy content management without code changes
-- **Multilingual Support**: Configurable text through Google Sheets
+- **Gender-Based Personalization**: Separate content and scoring for male and female users
+- **Interactive Quiz**: 19 carefully crafted questions with multiple choice answers
+- **Advanced Scoring**: Users select 3 out of 6 options per question with weighted scoring
+- **Personality Analysis**: Results show top 3 matching archetypes with detailed descriptions
+- **Media Delivery**: Automatic PDF reports and video content after completion
+- **Payment Integration**: Built-in premium content upselling
+- **Google Sheets Backend**: Dynamic content management without code deployment
+- **Caching System**: Optimized performance with TTL-based caching
+- **Comprehensive Logging**: Detailed monitoring and debugging capabilities
 
-## Project Structure
+## Quick Start
 
-```
-tg-fairy-bot/
-├── main.py              # Entry point
-├── config.py            # Configuration management
-├── requirements.txt     # Python dependencies
-├── Procfile            # Railway deployment config
-├── .env                # Environment variables (local)
-├── .gitignore          # Git ignore rules
-├── docs/               # Documentation
-│   ├── config-example.md        # Google Sheets config example
-│   ├── final-media-setup.md     # Media files setup guide
-│   ├── google-sheets-structure.md
-│   ├── service-account-setup.md
-│   └── worksheet-schemas.md
-└── app/
-    ├── __init__.py     # Package initialization
-    ├── handlers.py     # Bot message handlers
-    ├── keyboards.py    # Inline keyboard generation
-    └── gsheets.py      # Google Sheets integration
-```
+### Prerequisites
+- Python 3.8+
+- Telegram Bot Token from [@BotFather](https://t.me/BotFather)
+- Google Cloud account with Sheets API enabled
+- Google Sheets document with proper structure
 
-## Troubleshooting
-
-### Virtual Environment Issues
+### Setup
 ```bash
-# If activation fails
-which python3
-python3 -m venv .venv --clear
+# Clone and setup
+git clone <repository-url>
+cd tg-fairy-bot
 
-# If .venv already exists
-rm -rf .venv
+# Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your credentials
 ```
 
-### Google Sheets Connection
-- Verify service account has access to your spreadsheet
-- Check that JSON credentials are properly formatted
-- Ensure Google Sheets API is enabled in Google Cloud Console
+### Configuration
+Add to `.env`:
+```env
+BOT_TOKEN=your_telegram_bot_token
+SPREADSHEET_KEY=your_default_sheets_id
+SPREADSHEET_KEY_FEMALE=your_female_sheets_id
+SPREADSHEET_KEY_MALE=your_male_sheets_id
+GOOGLE_CREDENTIALS_JSON={"type":"service_account",...}
+```
 
-### Bot Token Issues
-- Get token from [@BotFather](https://t.me/BotFather)
-- Ensure token is properly set in `.env`
-- Check for extra spaces or newlines in `.env` file
+### Run
+```bash
+source .venv/bin/activate
+python main.py
+```
+
+## Documentation
+
+### Setup Guides
+- **[Service Account Setup](docs/service-account-setup.md)** - Google Cloud configuration
+- **[Worksheet Schemas](docs/worksheet-schemas.md)** - Complete data structure guide
+- **[Google Sheets Structure](docs/google-sheets-structure.md)** - Content examples
+
+### Development Guidelines
+- **[Technology Stack](.kiro/steering/tech.md)** - Tech stack and tools
+- **[Project Structure](.kiro/steering/structure.md)** - Code organization
+- **[Development Guide](.kiro/steering/development.md)** - Development workflow
+- **[Product Overview](.kiro/steering/product.md)** - Product requirements
+
+## Architecture
+
+### Project Structure
+```
+tg-fairy-bot/
+├── main.py              # Application entry point
+├── config.py            # Environment configuration
+├── requirements.txt     # Python dependencies
+├── Procfile            # Railway deployment config
+├── .env                # Local environment variables
+├── app/                # Main application package
+│   ├── handlers.py     # Telegram bot handlers
+│   ├── keyboards.py    # Inline keyboard generation
+│   └── gsheets.py      # Google Sheets integration
+├── tests/              # Test suite
+├── docs/               # Technical documentation
+└── .kiro/              # Kiro IDE configuration
+    ├── specs/          # Feature specifications
+    └── steering/       # Development guidelines
+```
+
+### Key Components
+- **Async Architecture**: Full async/await implementation for performance
+- **FSM State Management**: Robust user session handling with aiogram
+- **Caching Layer**: TTL-based caching for Google Sheets API optimization
+- **Error Handling**: Comprehensive error handling with graceful fallbacks
+- **Gender-Based Logic**: Dynamic table selection based on user choice
+
+## Development
+
+### Local Development
+```bash
+# Activate environment
+source .venv/bin/activate
+
+# Run bot
+python main.py
+
+# Run tests
+python -m pytest tests/ -v
+
+# Monitor logs
+tail -f bot.log
+```
+
+### Testing
+```bash
+# Run all tests
+python -m pytest tests/
+
+# Run with coverage
+python -m pytest tests/ --cov=app --cov-report=html
+
+# Test Google Sheets integration
+python -m pytest tests/test_unified_gsheets.py -v
+```
 
 ## Deployment
 
-### Railway Deployment
-1. Connect your GitHub repository to Railway
-2. Set environment variables in Railway dashboard:
-   - `BOT_TOKEN`
-   - `SPREADSHEET_KEY`
-   - `GOOGLE_CREDENTIALS_JSON`
-3. Deploy automatically on push to main branch
-
-### Manual Deployment
+### Railway (Recommended)
 ```bash
 # Install Railway CLI
 npm install -g @railway/cli
 
-# Login and deploy
+# Deploy
 railway login
 railway link
 railway up
 ```
 
+### Environment Variables (Production)
+- `BOT_TOKEN` - Telegram bot token
+- `SPREADSHEET_KEY` - Default/fallback Google Sheets ID
+- `SPREADSHEET_KEY_FEMALE` - Female-specific content sheets
+- `SPREADSHEET_KEY_MALE` - Male-specific content sheets
+- `GOOGLE_CREDENTIALS_JSON` - Service account credentials
+
+## Troubleshooting
+
+### Common Issues
+- **Google Sheets API**: Check service account permissions and API enablement
+- **Bot Token**: Verify token from @BotFather and environment configuration
+- **Virtual Environment**: Ensure proper activation and dependency installation
+- **Caching**: Clear cache if data appears stale
+
+### Debug Commands
+```bash
+# Test configuration
+python -c "from config import *; print('Config loaded')"
+
+# Test Google Sheets connection
+python -c "from app.gsheets import GoogleSheetsDB; db = GoogleSheetsDB(); print(db.get_config_value('welcome_sequence_1'))"
+
+# Validate bot token
+python -c "from aiogram import Bot; from config import BOT_TOKEN; Bot(BOT_TOKEN)"
+```
+
+## Contributing
+
+1. Create feature branch from main
+2. Follow development guidelines in `.kiro/steering/`
+3. Write tests for new functionality
+4. Update documentation as needed
+5. Submit pull request for review
+
 ## Support
 
-For issues and questions:
-- Check the troubleshooting section above
-- Review console logs for error messages
-- Ensure all environment variables are set correctly
+- Review troubleshooting section above
+- Check console logs for detailed error messages
+- Ensure all environment variables are properly configured
+- Verify Google Sheets structure matches schema documentation

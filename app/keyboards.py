@@ -35,3 +35,11 @@ def generate_answers_keyboard(answers: list, answered_ids: list) -> InlineKeyboa
     # Размещаем по 3 кнопки в ряд
     builder.adjust(3)
     return builder.as_markup()
+
+
+def generate_gender_selection_keyboard() -> InlineKeyboardMarkup:
+    """Генерирует клавиатуру для выбора пола"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👨 Мужчина", callback_data="gender:male")],
+        [InlineKeyboardButton(text="👩 Женщина", callback_data="gender:female")]
+    ])
