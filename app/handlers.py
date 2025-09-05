@@ -7,12 +7,24 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from app.gsheets import GoogleSheetsDB, UnifiedGoogleSheetsDB
-from app.keyboards import generate_answers_keyboard, generate_gender_selection_keyboard
+from app.keyboards import generate_answers_keyboard, generate_gender_selection_keyboard, generate_final_buttons_keyboard, generate_about_us_keyboard, generate_workbook_keyboard
 from config import GOOGLE_CREDENTIALS_PATH, GOOGLE_CREDENTIALS_JSON, SPREADSHEET_KEY
 
 logging.basicConfig(level=logging.INFO)
 
 router = Router()
+
+# Глобальный экземпляр БД - создается один раз при запуске
+try:
+    global_db = UnifiedGoogleSheetsDB(
+        credentials_json=GOOGLE_CREDENTIALS_JSON,
+        credentials_path=GOOGLE_CREDENTIALS_PATH,
+        spreadsheet_key=SPREADSHEET_KEY
+    )
+    logging.info("✅ Глобальный экземпляр БД успешно создан")
+except Exception as e:
+    logging.error(f"❌ Ошибка создания глобального экземпляра БД: {e}")
+    global_db = None
 
 class Introduction(StatesGroup):
     awaiting_gender_selection = State()
@@ -27,17 +39,16 @@ class Quiz(StatesGroup):
 async def send_question(message: Message, state: FSMContext):
     user_data = await state.get_data()
     
-    # Получаем БД и пол пользователя из состояния
-    db = user_data.get('sheets_db')
+    # Получаем пол пользователя из состояния
     user_gender = user_data.get('selected_gender', 'female')
     
-    if not db:
-        await message.answer("Ошибка: не выбран пол. Пожалуйста, /start.")
+    if not global_db:
+        await message.answer("Ошибка подключения к базе данных. Попробуйте /start.")
         return
     question_id = user_data.get('current_question_id', 1)
 
-    question_data = db.get_question(question_id, user_gender)
-    answers = db.get_answers(question_id, user_gender)
+    question_data = global_db.get_question(question_id, user_gender)
+    answers = global_db.get_answers(question_id, user_gender)
 
     if not question_data or not answers:
         await message.answer("Ошибка при загрузке вопроса. Пожалуйста, /start.")
@@ -118,82 +129,64 @@ async def gender_selection_handler(callback_query: CallbackQuery, state: FSMCont
     user_data = await state.get_data()
     test_mode = user_data.get('test_mode', False)
     
-    # Инициализируем объединенную БД
+    # Проверяем доступность глобальной БД
+    if not global_db:
+        await callback_query.message.answer("Ошибка подключения к базе данных. Попробуйте позже.")
+        await callback_query.answer()
+        return
+        
+    # Сохраняем только выбранный пол в состоянии
+    await state.update_data(selected_gender=gender)
+    
+    # Удаляем сообщение загрузки
     try:
-        db = UnifiedGoogleSheetsDB(
-            credentials_json=GOOGLE_CREDENTIALS_JSON,
-            credentials_path=GOOGLE_CREDENTIALS_PATH,
-            spreadsheet_key=SPREADSHEET_KEY
-        )
-        
-        # Сохраняем выбранный пол и БД в состоянии
-        await state.update_data(selected_gender=gender, sheets_db=db)
-        
-        # Удаляем сообщение загрузки
-        try:
-            await loading_msg.delete()
-        except:
-            pass  # Игнорируем ошибки удаления
-        
-        # Показываем подтверждение выбора
-        gender_text = "мужчина" if gender == "male" else "женщина"
-        await callback_query.message.answer(f"Отлично! Вы выбрали: {gender_text} 👍")
-        await asyncio.sleep(1)
-        
-        # Если тест-режим, показываем финальное сообщение и выходим
-        if test_mode:
-            await handle_test_final_message(callback_query.message, db, gender)
-            await state.clear()
-            return
-        
-        # Переходим к промо-сообщению
-        msg1_text = db.get_config_value('welcome_sequence_1').replace('\\n', '\n')
-        msg2_text = db.get_config_value('welcome_sequence_2').replace('\\n', '\n')
-        promo_text = db.get_config_value('promo_sequence').replace('\\n', '\n')
-        
-        await callback_query.message.answer(msg1_text)
-        await asyncio.sleep(1.5)
-        
-        await callback_query.message.answer(msg2_text)
-        await asyncio.sleep(1.5)
+        await loading_msg.delete()
+    except:
+        pass  # Игнорируем ошибки удаления
+    
+    # Показываем подтверждение выбора
+    gender_text = "мужчина" if gender == "male" else "женщина"
+    await callback_query.message.answer(f"Отлично! Вы выбрали: {gender_text} 👍")
+    await asyncio.sleep(1)
+    
+    # Если тест-режим, показываем финальное сообщение и выходим
+    if test_mode:
+        await handle_test_final_message(callback_query.message, global_db, gender)
+        await state.clear()
+        return
+    
+    # Переходим к промо-сообщению
+    msg1_text = global_db.get_config_value('welcome_sequence_1').replace('\\n', '\n')
+    msg2_text = global_db.get_config_value('welcome_sequence_2').replace('\\n', '\n')
+    promo_text = global_db.get_config_value('promo_sequence').replace('\\n', '\n')
+    
+    await callback_query.message.answer(msg1_text)
+    await asyncio.sleep(1.5)
+    
+    await callback_query.message.answer(msg2_text)
+    await asyncio.sleep(1.5)
 
-        button_text = db.get_config_value('promo_button_text')
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=button_text, callback_data="start_instructions")]
-        ])
-        
-        await callback_query.message.answer(promo_text, reply_markup=keyboard)
-        await state.set_state(Introduction.awaiting_promo_confirmation)
-        
-    except Exception as e:
-        logging.error(f"Ошибка при инициализации БД для пола {gender}: {e}")
-        
-        # Удаляем сообщение загрузки
-        try:
-            await loading_msg.delete()
-        except:
-            pass
-        
-        # Показываем сообщение об ошибке
-        await callback_query.message.answer(
-            "Извините, сервис временно недоступен. Попробуйте позже."
-        )
+    button_text = global_db.get_config_value('promo_button_text')
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=button_text, callback_data="start_instructions")]
+    ])
+    
+    await callback_query.message.answer(promo_text, reply_markup=keyboard)
+    await state.set_state(Introduction.awaiting_promo_confirmation)
 
 
 @router.callback_query(Introduction.awaiting_promo_confirmation, F.data == "start_instructions")
 async def instructions_handler(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.message.edit_reply_markup(reply_markup=None) 
     
-    user_data = await state.get_data()
-    db = user_data.get('sheets_db')
-    if not db:
-        await callback_query.message.answer("Ошибка: не выбран пол. Пожалуйста, /start.")
+    if not global_db:
+        await callback_query.message.answer("Ошибка подключения к базе данных. Попробуйте /start.")
         await callback_query.answer()
         return
     
     # Config лист общий для всех, поэтому не передаем пол
-    instruction_text = db.get_config_value('instruction_sequence').replace('\\n', '\n')
-    button_text = db.get_config_value('start_button_text')
+    instruction_text = global_db.get_config_value('instruction_sequence').replace('\\n', '\n')
+    button_text = global_db.get_config_value('start_button_text')
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=button_text, callback_data="start_quiz_now")]
     ])
@@ -213,14 +206,13 @@ async def quiz_start_handler(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.message.edit_reply_markup(reply_markup=None)
     
     user_data = await state.get_data()
-    db = user_data.get('sheets_db')
     user_gender = user_data.get('selected_gender', 'female')
     
-    if not db:
-        await callback_query.message.answer("Ошибка: не выбран пол. Пожалуйста, /start.")
+    if not global_db:
+        await callback_query.message.answer("Ошибка подключения к базе данных. Попробуйте /start.")
         await callback_query.answer()
         return
-    all_archetypes = db.get_all_archetypes(user_gender)
+    all_archetypes = global_db.get_all_archetypes(user_gender)
     if not all_archetypes:
         await callback_query.message.answer("Ошибка: не удалось загрузить данные. /start.")
         logging.error("Список архетипов пуст.")
@@ -295,15 +287,13 @@ async def callback_answer_handler(callback_query: CallbackQuery, state: FSMConte
 
 
 async def ask_to_show_results(message: Message, state: FSMContext):
-    user_data = await state.get_data()
-    db = user_data.get('sheets_db')
-    if not db:
-        await message.answer("Ошибка: не выбран пол. Пожалуйста, /start.")
+    if not global_db:
+        await message.answer("Ошибка подключения к базе данных. Попробуйте /start.")
         return
     
     # Config лист общий для всех, поэтому не передаем пол
-    final_text = db.get_config_value('final_cta_text').replace('\\n', '\n')
-    button_text = db.get_config_value('final_cta_button')
+    final_text = global_db.get_config_value('final_cta_text').replace('\\n', '\n')
+    button_text = global_db.get_config_value('final_cta_button')
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=button_text, callback_data="show_final_result")]
@@ -326,19 +316,18 @@ async def show_results_handler(callback_query: CallbackQuery, state: FSMContext)
         
     sorted_archetypes = sorted(scores.items(), key=lambda item: item[1], reverse=True)
     
-    # Получаем БД и пол пользователя из состояния
-    db = user_data.get('sheets_db')
+    # Получаем пол пользователя из состояния
     user_gender = user_data.get('selected_gender', 'female')
     
-    if not db:
-        await callback_query.message.answer("Ошибка: не выбран пол. Пожалуйста, /start.")
+    if not global_db:
+        await callback_query.message.answer("Ошибка подключения к базе данных. Попробуйте /start.")
         await callback_query.answer()
         return
     
     # Отправляем основной архетип
     if len(sorted_archetypes) > 0:
         primary_archetype_id = sorted_archetypes[0][0]
-        primary_result = db.get_archetype_result(primary_archetype_id, user_gender)
+        primary_result = global_db.get_archetype_result(primary_archetype_id, user_gender)
         if primary_result:
             text = primary_result.get('main_description', '').replace('\\n', '\n')
             if text:
@@ -348,7 +337,7 @@ async def show_results_handler(callback_query: CallbackQuery, state: FSMContext)
     # Отправляем второй архетип
     if len(sorted_archetypes) > 1:
         secondary_1_id = sorted_archetypes[1][0]
-        secondary_1_result = db.get_archetype_result(secondary_1_id, user_gender)
+        secondary_1_result = global_db.get_archetype_result(secondary_1_id, user_gender)
         if secondary_1_result:
             text = secondary_1_result.get('secondary_description', '').replace('\\n', '\n')
             if text:
@@ -358,7 +347,7 @@ async def show_results_handler(callback_query: CallbackQuery, state: FSMContext)
     # Отправляем третий архетип
     if len(sorted_archetypes) > 2:
         secondary_2_id = sorted_archetypes[2][0]
-        secondary_2_result = db.get_archetype_result(secondary_2_id, user_gender)
+        secondary_2_result = global_db.get_archetype_result(secondary_2_id, user_gender)
         if secondary_2_result:
             text = secondary_2_result.get('secondary_description', '').replace('\\n', '\n')
             if text:
@@ -366,10 +355,54 @@ async def show_results_handler(callback_query: CallbackQuery, state: FSMContext)
                 await asyncio.sleep(2)  # Пауза между сообщениями
 
     # Отправляем финальное сообщение с PDF, видео и ссылкой на оплату
-    await send_final_media_and_payment(callback_query.message, db)
+    await send_final_media_and_payment(callback_query.message, global_db)
     
-    await state.clear()
+    # Состояние будет очищено после нажатия на финальные кнопки
     await callback_query.answer()
+
+
+@router.callback_query(F.data == "about_us")
+async def about_us_handler(callback_query: CallbackQuery, state: FSMContext):
+    """Обработчик кнопки 'Узнать больше про нас'"""
+    await callback_query.answer()
+    
+    if not global_db:
+        await callback_query.message.answer("Ошибка подключения к базе данных. Попробуйте позже.")
+        await state.clear()
+        return
+    
+    # Получаем текст about_us из конфигурации
+    about_us_text = global_db.get_config_value('about_us')
+    
+    if about_us_text:
+        formatted_text = about_us_text.replace('\\n', '\n')
+        keyboard = generate_about_us_keyboard()
+        await callback_query.message.answer(formatted_text, parse_mode="HTML", reply_markup=keyboard)
+    else:
+        await callback_query.message.answer("Информация временно недоступна.")
+    
+    # Очищаем состояние после обработки
+    await state.clear()
+
+
+@router.callback_query(F.data == "workbook")
+async def workbook_handler(callback_query: CallbackQuery, state: FSMContext):
+    """Обработчик кнопки 'Скачать рабочую тетрадь magic book'"""
+    await callback_query.answer()
+    
+    if not global_db:
+        await callback_query.message.answer("Ошибка подключения к базе данных. Попробуйте позже.")
+        return
+    
+    # Получаем текст workbook из конфигурации
+    workbook_text = global_db.get_config_value('workbook')
+    
+    if workbook_text:
+        formatted_text = workbook_text.replace('\\n', '\n')
+        keyboard = generate_workbook_keyboard()
+        await callback_query.message.answer(formatted_text, parse_mode="HTML", reply_markup=keyboard)
+    else:
+        await callback_query.message.answer("Информация о рабочей тетради временно недоступна.")
 
 
 async def send_final_media_and_payment(message: Message, db: GoogleSheetsDB):
@@ -381,7 +414,7 @@ async def send_final_media_and_payment(message: Message, db: GoogleSheetsDB):
         payment_url = db.get_config_value('payment_url')
         
         # Используем существующие ключи из Config
-        final_message_text = db.get_config_value('final_proposition')
+        final_message_text = db.get_config_value('final_message_text')
         payment_button_text = db.get_config_value('final_cta_button')
         
         # Подробное логирование для отладки
@@ -392,86 +425,15 @@ async def send_final_media_and_payment(message: Message, db: GoogleSheetsDB):
         logging.info(f"   Final message: {bool(final_message_text)}")
         logging.info(f"   Button text: '{payment_button_text}'")
 
-        # Отправляем PDF как ссылку, если указан
-        if pdf_url and pdf_url.strip():
-            try:
-                logging.info(f"🔄 Отправляем PDF ссылку: {pdf_url}")
-                await message.answer(
-                    f"📄 <b>Ваш персональный отчет по результатам теста</b>\n\n"
-                    f"🔗 <a href='{pdf_url.strip()}'>Скачать отчет</a>",
-                    parse_mode="HTML",
-                    disable_web_page_preview=True
-                )
-                await asyncio.sleep(1)
-                logging.info("✅ PDF ссылка успешно отправлена")
-            except Exception as e:
-                logging.error(f"❌ Ошибка при отправке PDF ссылки: {e}")
-                logging.error(f"   URL: '{pdf_url}'")
-                # Отправляем сообщение пользователю о проблеме с полной ссылкой
-                await message.answer(f"⚠️ Не удалось отправить PDF ссылку.\n\nСсылка: {pdf_url}")
-        else:
-            logging.info("ℹ️ PDF URL пустой или отсутствует")
-
-        # Отправляем видео, если указано
-        if video_url and video_url.strip():
-            try:
-                logging.info(f"🔄 Отправляем видео: {video_url}")
-                await message.answer_video(
-                    video=URLInputFile(video_url.strip()),
-                    caption="🎥 Дополнительная информация о вашем архетипе"
-                )
-                await asyncio.sleep(1)
-                logging.info("✅ Видео успешно отправлено")
-            except Exception as e:
-                logging.error(f"❌ Ошибка при отправке видео: {e}")
-                logging.error(f"   URL: '{video_url}'")
-                # Отправляем сообщение пользователю о проблеме с полной ссылкой
-                await message.answer(f"⚠️ Не удалось отправить видео.\n\nСсылка: {video_url}")
-        else:
-            logging.info("ℹ️ Video URL пустой или отсутствует")
-
-        # Отправляем финальное сообщение со ссылкой на оплату
-        keyboard = None
-        if payment_url and payment_button_text:
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=payment_button_text, url=payment_url)]
-            ])
-        
-        # Используем текст из Config или базовое сообщение
+        # Отправляем финальное сообщение с кнопками
         message_text = final_message_text or "🎉 <b>Поздравляем!</b>\n\nВы успешно прошли тест архетипов!\n\nСпасибо за участие!"
         formatted_text = message_text.replace('\\n', '\n')
         
-        # Проверяем длину сообщения и разбиваем при необходимости
-        if len(formatted_text) > 4000:
-            # Разбиваем длинное сообщение на части
-            chunks = []
-            current_chunk = ""
-            
-            for line in formatted_text.split('\n'):
-                if len(current_chunk + line + '\n') > 4000:
-                    if current_chunk:
-                        chunks.append(current_chunk.strip())
-                        current_chunk = line + '\n'
-                    else:
-                        # Если одна строка слишком длинная, принудительно разбиваем
-                        chunks.append(line[:4000])
-                        current_chunk = line[4000:] + '\n'
-                else:
-                    current_chunk += line + '\n'
-            
-            if current_chunk:
-                chunks.append(current_chunk.strip())
-            
-            # Отправляем все части кроме последней
-            for chunk in chunks[:-1]:
-                await message.answer(chunk, parse_mode="HTML")
-                await asyncio.sleep(0.5)
-            
-            # Последнюю часть отправляем с кнопкой
-            await message.answer(chunks[-1], reply_markup=keyboard, parse_mode="HTML")
-        else:
-            # Сообщение помещается в один блок
-            await message.answer(formatted_text, reply_markup=keyboard, parse_mode="HTML")
+        logging.info("📨 Отправляем финальное сообщение с кнопками")
+        keyboard = generate_final_buttons_keyboard()
+        await message.answer(formatted_text, parse_mode="HTML", reply_markup=keyboard)
+        
+        # Больше ничего не отправляем автоматически - только кнопки для взаимодействия
 
     except Exception as e:
         logging.error(f"Ошибка при отправке финальных материалов: {e}")
@@ -510,13 +472,11 @@ async def test_handler(message: Message, state: FSMContext):
 @router.message(Command("debug"))
 async def debug_handler(message: Message):
     """Отладочная команда для проверки Config листа"""
+    if not global_db:
+        await message.answer("❌ Глобальная БД недоступна")
+        return
+    
     try:
-        # Инициализируем объединенную БД
-        db = UnifiedGoogleSheetsDB(
-            credentials_json=GOOGLE_CREDENTIALS_JSON,
-            credentials_path=GOOGLE_CREDENTIALS_PATH,
-            spreadsheet_key=SPREADSHEET_KEY
-        )
         
         # Проверяем основные ключи
         basic_keys = ['welcome_sequence_1', 'welcome_sequence_2', 'promo_sequence', 'promo_button_text', 'start_button_text']
@@ -526,13 +486,13 @@ async def debug_handler(message: Message):
         
         debug_info += "<b>Основные ключи:</b>\n"
         for key in basic_keys:
-            value = db.get_config_value(key)
+            value = global_db.get_config_value(key)
             status = "✅" if value else "❌"
             debug_info += f"{status} {key}: {bool(value)}\n"
         
         debug_info += "\n<b>Финальные ключи:</b>\n"
         for key in final_keys:
-            value = db.get_config_value(key)
+            value = global_db.get_config_value(key)
             status = "✅" if value else "❌"
             debug_info += f"{status} {key}: {bool(value)}\n"
             
@@ -584,7 +544,7 @@ async def handle_test_final_message(message: Message, db: UnifiedGoogleSheetsDB,
     if len(demo_archetypes) > 0:
         primary_archetype_id = demo_archetypes[0].get('archetype_id')
         if primary_archetype_id:
-            primary_result = db.get_archetype_result(primary_archetype_id, user_gender)
+            primary_result = global_db.get_archetype_result(primary_archetype_id, user_gender)
             if primary_result:
                 text = primary_result.get('main_description', '').replace('\\n', '\n')
                 if text:
@@ -595,7 +555,7 @@ async def handle_test_final_message(message: Message, db: UnifiedGoogleSheetsDB,
     if len(demo_archetypes) > 1:
         secondary_1_id = demo_archetypes[1].get('archetype_id')
         if secondary_1_id:
-            secondary_1_result = db.get_archetype_result(secondary_1_id, user_gender)
+            secondary_1_result = global_db.get_archetype_result(secondary_1_id, user_gender)
             if secondary_1_result:
                 text = secondary_1_result.get('secondary_description', '').replace('\\n', '\n')
                 if text:
@@ -606,7 +566,7 @@ async def handle_test_final_message(message: Message, db: UnifiedGoogleSheetsDB,
     if len(demo_archetypes) > 2:
         secondary_2_id = demo_archetypes[2].get('archetype_id')
         if secondary_2_id:
-            secondary_2_result = db.get_archetype_result(secondary_2_id, user_gender)
+            secondary_2_result = global_db.get_archetype_result(secondary_2_id, user_gender)
             if secondary_2_result:
                 text = secondary_2_result.get('secondary_description', '').replace('\\n', '\n')
                 if text:

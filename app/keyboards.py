@@ -43,3 +43,29 @@ def generate_gender_selection_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="👨 Мужчина", callback_data="gender:male")],
         [InlineKeyboardButton(text="👩 Женщина", callback_data="gender:female")]
     ])
+
+
+def generate_final_buttons_keyboard() -> InlineKeyboardMarkup:
+    """Генерирует клавиатуру с финальными кнопками"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Присоединиться к закрытому каналу", url="https://t.me/tribute/app?startapp=sycj")],
+        [InlineKeyboardButton(text="Узнать больше про нас", callback_data="about_us")]
+    ])
+
+
+def generate_about_us_keyboard() -> InlineKeyboardMarkup:
+    """Генерирует клавиатуру для сообщения about_us"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✨ 🧚🏻 Присоединиться к закрытому каналу по ранней цене  — стать частью волшебного сообщества", url="https://t.me/tribute/app?startapp=sycj")],
+        [InlineKeyboardButton(text="📖Скачать рабочую тетрадь magic book — твой персональный навигатор по созданию бренда", callback_data="workbook")],
+        [InlineKeyboardButton(text="💬 Задать вопрос службе заботы", url="https://t.me/cooperative_skazka")]
+    ])
+
+
+def generate_workbook_keyboard() -> InlineKeyboardMarkup:
+    """Генерирует клавиатуру для сообщения workbook с кнопкой скачивания и дополнительными действиями"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Скачать", url="https://drive.google.com/file/d/1Kemc-bGezHYzXMwzv342zr3cIR_YJfT4/view?usp=drivesdk")],
+        [InlineKeyboardButton(text="✨ 🧚🏻 Присоединиться к закрытому каналу по ранней цене  — стать частью волшебного сообщества", url="https://t.me/tribute/app?startapp=sycj")],
+        [InlineKeyboardButton(text="💬 Задать вопрос службе заботы", url="https://t.me/cooperative_skazka")]
+    ])

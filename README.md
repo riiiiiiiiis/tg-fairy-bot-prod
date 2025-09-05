@@ -17,12 +17,14 @@ A sophisticated Telegram personality quiz bot that helps users discover their ar
 ## Quick Start
 
 ### Prerequisites
+
 - Python 3.8+
 - Telegram Bot Token from [@BotFather](https://t.me/BotFather)
 - Google Cloud account with Sheets API enabled
 - Google Sheets document with proper structure
 
 ### Setup
+
 ```bash
 # Clone and setup
 git clone <repository-url>
@@ -41,7 +43,9 @@ cp .env.example .env
 ```
 
 ### Configuration
+
 Add to `.env`:
+
 ```env
 BOT_TOKEN=your_telegram_bot_token
 SPREADSHEET_KEY=your_default_sheets_id
@@ -51,7 +55,9 @@ GOOGLE_CREDENTIALS_JSON={"type":"service_account",...}
 ```
 
 ### Run
+
 ```bash
+ source .venv/bin/activate && python main.py
 source .venv/bin/activate
 python main.py
 ```
@@ -59,11 +65,13 @@ python main.py
 ## Documentation
 
 ### Setup Guides
+
 - **[Service Account Setup](docs/service-account-setup.md)** - Google Cloud configuration
 - **[Worksheet Schemas](docs/worksheet-schemas.md)** - Complete data structure guide
 - **[Google Sheets Structure](docs/google-sheets-structure.md)** - Content examples
 
 ### Development Guidelines
+
 - **[Technology Stack](.kiro/steering/tech.md)** - Tech stack and tools
 - **[Project Structure](.kiro/steering/structure.md)** - Code organization
 - **[Development Guide](.kiro/steering/development.md)** - Development workflow
@@ -72,6 +80,7 @@ python main.py
 ## Architecture
 
 ### Project Structure
+
 ```
 tg-fairy-bot/
 ├── main.py              # Application entry point
@@ -91,6 +100,7 @@ tg-fairy-bot/
 ```
 
 ### Key Components
+
 - **Async Architecture**: Full async/await implementation for performance
 - **FSM State Management**: Robust user session handling with aiogram
 - **Caching Layer**: TTL-based caching for Google Sheets API optimization
@@ -100,6 +110,7 @@ tg-fairy-bot/
 ## Development
 
 ### Local Development
+
 ```bash
 # Activate environment
 source .venv/bin/activate
@@ -115,6 +126,7 @@ tail -f bot.log
 ```
 
 ### Testing
+
 ```bash
 # Run all tests
 python -m pytest tests/
@@ -129,6 +141,7 @@ python -m pytest tests/test_unified_gsheets.py -v
 ## Deployment
 
 ### Railway (Recommended)
+
 ```bash
 # Install Railway CLI
 npm install -g @railway/cli
@@ -140,6 +153,7 @@ railway up
 ```
 
 ### Environment Variables (Production)
+
 - `BOT_TOKEN` - Telegram bot token
 - `SPREADSHEET_KEY` - Default/fallback Google Sheets ID
 - `SPREADSHEET_KEY_FEMALE` - Female-specific content sheets
@@ -149,12 +163,14 @@ railway up
 ## Troubleshooting
 
 ### Common Issues
+
 - **Google Sheets API**: Check service account permissions and API enablement
 - **Bot Token**: Verify token from @BotFather and environment configuration
 - **Virtual Environment**: Ensure proper activation and dependency installation
 - **Caching**: Clear cache if data appears stale
 
 ### Debug Commands
+
 ```bash
 # Test configuration
 python -c "from config import *; print('Config loaded')"
