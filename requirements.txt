@@ -1,5 +1,6 @@
-aiogram
-gspread
-oauth2client
-python-dotenv
-cachetools
+aiogram==3.13.0
+gspread==6.1.2
+google-auth==2.35.0
+google-auth-oauthlib==1.2.1
+python-dotenv==1.0.1
+cachetools==5.5.0

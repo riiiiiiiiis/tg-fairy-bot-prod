@@ -31,3 +31,5 @@ Thumbs.db
 *.log
 bot.log
 
+google_credentials.json
+railway_env_json.txt

@@ -1,7 +1,9 @@
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2 import service_account
 from cachetools import cached, TTLCache
 import logging
+import os
+import json
 
 logging.basicConfig(level=logging.INFO)
 
@@ -12,23 +14,22 @@ class GoogleSheetsDB:
         try:
             if not spreadsheet_key:
                 raise ValueError("SPREADSHEET_KEY не указан в переменных окружения")
-            
+
             if credentials_json:
                 # Use JSON string from environment variable
-                import json
                 logging.info("Используем JSON credentials из переменной окружения")
                 if isinstance(credentials_json, str):
                     creds_dict = json.loads(credentials_json)
                 else:
                     creds_dict = credentials_json
-                creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+                creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=scope)
             elif credentials_path:
                 # Fallback to file path
                 logging.info(f"Используем credentials из файла: {credentials_path}")
-                creds = ServiceAccountCredentials.from_json_keyfile_name(credentials_path, scope)
+                creds = service_account.Credentials.from_service_account_file(credentials_path, scopes=scope)
             else:
                 raise ValueError("Either credentials_json or credentials_path must be provided")
-            
+
             logging.info("Авторизация в Google Sheets...")
             self.client = gspread.authorize(creds)
             
@@ -202,18 +203,18 @@ class UnifiedGoogleSheetsDB(GoogleSheetsDB):
         try:
             if not spreadsheet_key:
                 raise ValueError("SPREADSHEET_KEY не указан в переменных окружения")
-            
-            if credentials_json:
-                import json
+
+            # Приоритет: сначала файл, потом JSON из переменной окружения
+            if credentials_path and os.path.exists(credentials_path):
+                logging.info(f"Используем credentials из файла: {credentials_path}")
+                creds = service_account.Credentials.from_service_account_file(credentials_path, scopes=scope)
+            elif credentials_json:
                 logging.info("Используем JSON credentials из переменной окружения")
                 if isinstance(credentials_json, str):
                     creds_dict = json.loads(credentials_json)
                 else:
                     creds_dict = credentials_json
-                creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-            elif credentials_path:
-                logging.info(f"Используем credentials из файла: {credentials_path}")
-                creds = ServiceAccountCredentials.from_json_keyfile_name(credentials_path, scope)
+                creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=scope)
             else:
                 raise ValueError("Either credentials_json or credentials_path must be provided")
             

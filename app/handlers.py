@@ -17,8 +17,8 @@ router = Router()
 # Глобальный экземпляр БД - создается один раз при запуске
 try:
     global_db = UnifiedGoogleSheetsDB(
-        credentials_json=GOOGLE_CREDENTIALS_JSON,
         credentials_path=GOOGLE_CREDENTIALS_PATH,
+        credentials_json=GOOGLE_CREDENTIALS_JSON,
         spreadsheet_key=SPREADSHEET_KEY
     )
     logging.info("✅ Глобальный экземпляр БД успешно создан")
